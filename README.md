@@ -10,3 +10,8 @@ PySC2 bot - reinforcement learning
 
 Ressources:
 [skjb/pysc2-tutorial](https://github.com/skjb/pysc2-tutorial)
+
+``` python
+pip install pysc2
+pip install baselines
+```
