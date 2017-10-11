@@ -2,7 +2,9 @@
 PySC2 bot - reinforcement learning
 
 
-[DeepMind PDF](file:///home/jl/T%C3%A9l%C3%A9chargements/sc2le.pdf)
+[DeepMind PDF](https://deepmind.com/documents/110/sc2le.pdf)
+
+
 [SC 11 client proto](https://github.com/Blizzard/s2client-proto)
 
 
