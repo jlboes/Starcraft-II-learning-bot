@@ -1,7 +1,7 @@
 # Starcraft-II-learning-bot
 PySC2 bot - reinforcement learning
 
-
+[DeepMind AI Starcraft](https://deepmind.com/blog/deepmind-and-blizzard-open-starcraft-ii-ai-research-environment)
 [DeepMind PDF](https://deepmind.com/documents/110/sc2le.pdf)
 
 
