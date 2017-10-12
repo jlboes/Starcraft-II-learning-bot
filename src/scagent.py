@@ -98,7 +98,7 @@ class SmartAgent(base_agent.BaseAgent):
                 reward += REWARD.KILL_UNIT
 
             if killed_unit_score < self.previous_killed_unit_score:
-                reward -= REWARD.LOST_UNIT
+                reward += REWARD.LOST_UNIT
 
             if killed_building_score > self.previous_killed_building_score:
                 reward += REWARD.KILL_BUILDING
@@ -130,14 +130,21 @@ class SmartAgent(base_agent.BaseAgent):
                 return actions.FunctionCall(_SELECT_POINT, [_SCREEN, target])
 
         elif smart_action == ACTION_BUILD_SUPPLY_DEPOT:
-            ScLogger.logbo(smart_action)
             if _BUILD_SUPPLY_DEPOT in obs.observation['available_actions']:
                 unit_type = obs.observation['screen'][_UNIT_TYPE]
-                unit_y, unit_x = (unit_type == TERRAN.COMMANDCENTER).nonzero()
+                if supply_depot_count:
+                    unit_y, unit_x = (unit_type == TERRAN.SUPPLY_DEPOT).nonzero()
+                    if unit_y.any():
+                        target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), int(unit_y.mean())/2)
+
+                else:
+                    unit_y, unit_x = (unit_type == TERRAN.COMMANDCENTER).nonzero()
+                    if unit_y.any():
+                        target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
 
                 if unit_y.any():
-                    target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
-                    ScLogger.logbo(smart_action+" :: location = "+str(target))
+                    # target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 0)
+                    ScLogger.logbo(smart_action+" :: location = "+str(target)+"from SCV at "+str(int(unit_x.mean()))+","+str(int(unit_y.mean())))
                     return actions.FunctionCall(_BUILD_SUPPLY_DEPOT, [_SCREEN, target])
 
         elif smart_action == ACTION_BUILD_BARRACKS:

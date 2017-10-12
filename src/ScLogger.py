@@ -9,8 +9,8 @@ class ScLogger:
 
     @staticmethod
     def logbo(message):
-        ScLogger.logger.info("[BUILD ORDER] : %s",message)
+        ScLogger.logger.info("[BUILD ORDER] : %s", message)
 
     @staticmethod
     def logReward(message):
-        ScLogger.logger.info("[REWARD] : %i",message)
+        ScLogger.logger.info("[REWARD] : %.2f", message)
