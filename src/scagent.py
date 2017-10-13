@@ -1,5 +1,4 @@
 import random
-import math
 
 from pysc2.agents import base_agent
 from pysc2.lib import actions
@@ -16,6 +15,7 @@ _BUILD_SUPPLY_DEPOT = actions.FUNCTIONS.Build_SupplyDepot_screen.id
 _BUILD_BARRACKS = actions.FUNCTIONS.Build_Barracks_screen.id
 _TRAIN_MARINE = actions.FUNCTIONS.Train_Marine_quick.id
 _SELECT_ARMY = actions.FUNCTIONS.select_army.id
+_SELECT_IDLE_WORKER = actions.FUNCTIONS.select_idle_worker.id
 _ATTACK_MINIMAP = actions.FUNCTIONS.Attack_minimap.id
 
 _PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
@@ -25,6 +25,7 @@ _PLAYER_ID = features.SCREEN_FEATURES.player_id.index
 _PLAYER_SELF = 1
 
 _SCREEN = [0]
+MAP_MAXSIZE = 83
 
 ACTION_DO_NOTHING = 'donothing'
 ACTION_SELECT_SCV = 'selectscv'
@@ -47,9 +48,7 @@ smart_actions = [
 ]
 
 
-
 class SmartAgent(base_agent.BaseAgent):
-
     def __init__(self):
         self.qlearn = QLearningTable(actions=list(range(len(smart_actions))))
         self.previous_killed_unit_score = 0
@@ -59,9 +58,9 @@ class SmartAgent(base_agent.BaseAgent):
 
     def transformLocation(self, x, x_distance, y, y_distance):
         if not self.base_top_left:
-            return [x - x_distance, y - y_distance]
+            return [max(x - x_distance, 0), max(y - y_distance, 0)]
 
-        return [x + x_distance, y + y_distance]
+        return [min(x + x_distance, MAP_MAXSIZE), min(y + y_distance, MAP_MAXSIZE)]
 
     def step(self, obs):
 
@@ -103,7 +102,11 @@ class SmartAgent(base_agent.BaseAgent):
             if killed_building_score > self.previous_killed_building_score:
                 reward += REWARD.KILL_BUILDING
 
-            ScLogger.logReward(reward)
+            if 0 != reward:
+                ScLogger.log("------------------------")
+                ScLogger.logReward(float(reward))
+                ScLogger.log("------------------------")
+
             self.qlearn.learn(str(self.previous_state), self.previous_action, reward, str(current_state))
 
         rl_action = self.qlearn.choose_action(str(current_state))
@@ -115,11 +118,10 @@ class SmartAgent(base_agent.BaseAgent):
         self.previous_action = rl_action
 
         if smart_action == ACTION_DO_NOTHING:
-            ScLogger.logbo(smart_action)
+            # ScLogger.logbo(smart_action)
             return actions.FunctionCall(_NO_OP, [])
 
         elif smart_action == ACTION_SELECT_SCV:
-            ScLogger.logbo(smart_action)
             unit_type = obs.observation['screen'][_UNIT_TYPE]
             unit_y, unit_x = (unit_type == TERRAN.SCV).nonzero()
 
@@ -129,43 +131,24 @@ class SmartAgent(base_agent.BaseAgent):
 
                 return actions.FunctionCall(_SELECT_POINT, [_SCREEN, target])
 
-        elif smart_action == ACTION_BUILD_SUPPLY_DEPOT:
+        elif smart_action == ACTION_BUILD_SUPPLY_DEPOT and supply_depot_count == 0:
             if _BUILD_SUPPLY_DEPOT in obs.observation['available_actions']:
-                unit_type = obs.observation['screen'][_UNIT_TYPE]
-                if supply_depot_count:
-                    unit_y, unit_x = (unit_type == TERRAN.SUPPLY_DEPOT).nonzero()
-                    if unit_y.any():
-                        target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), int(unit_y.mean())/2)
-
-                else:
-                    unit_y, unit_x = (unit_type == TERRAN.COMMANDCENTER).nonzero()
-                    if unit_y.any():
-                        target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 20)
-
-                if unit_y.any():
-                    # target = self.transformLocation(int(unit_x.mean()), 0, int(unit_y.mean()), 0)
-                    ScLogger.logbo(smart_action+" :: location = "+str(target)+"from SCV at "+str(int(unit_x.mean()))+","+str(int(unit_y.mean())))
-                    return actions.FunctionCall(_BUILD_SUPPLY_DEPOT, [_SCREEN, target])
+                ScLogger.logbo(smart_action)
+                target = self.findLocationForBuilding(obs)
+                return actions.FunctionCall(_BUILD_SUPPLY_DEPOT, [_SCREEN, target])
 
         elif smart_action == ACTION_BUILD_BARRACKS:
-            ScLogger.logbo(smart_action)
             if _BUILD_BARRACKS in obs.observation['available_actions']:
-                unit_type = obs.observation['screen'][_UNIT_TYPE]
-                unit_y, unit_x = (unit_type == TERRAN.COMMANDCENTER).nonzero()
-
-                if unit_y.any():
-                    target = self.transformLocation(int(unit_x.mean()), 20, int(unit_y.mean()), 0)
-
-                    return actions.FunctionCall(_BUILD_BARRACKS, [_SCREEN, target])
+                ScLogger.logbo(smart_action)
+                target = self.findLocationForBuilding(obs)
+                return actions.FunctionCall(_BUILD_BARRACKS, [_SCREEN, target])
 
         elif smart_action == ACTION_SELECT_BARRACKS:
-            ScLogger.logbo(smart_action)
             unit_type = obs.observation['screen'][_UNIT_TYPE]
             unit_y, unit_x = (unit_type == TERRAN.BARRACKS).nonzero()
 
             if unit_y.any():
                 target = [int(unit_x.mean()), int(unit_y.mean())]
-
                 return actions.FunctionCall(_SELECT_POINT, [_SCREEN, target])
 
         elif smart_action == ACTION_BUILD_MARINE:
@@ -174,12 +157,10 @@ class SmartAgent(base_agent.BaseAgent):
                 return actions.FunctionCall(_TRAIN_MARINE, [[1]])
 
         elif smart_action == ACTION_SELECT_ARMY:
-            ScLogger.logbo(smart_action)
             if _SELECT_ARMY in obs.observation['available_actions']:
                 return actions.FunctionCall(_SELECT_ARMY, [[0]])
 
         elif smart_action == ACTION_ATTACK:
-            ScLogger.logbo(smart_action)
             if _ATTACK_MINIMAP in obs.observation["available_actions"]:
                 if self.base_top_left:
                     return actions.FunctionCall(_ATTACK_MINIMAP, [[1], [39, 45]])
@@ -187,3 +168,22 @@ class SmartAgent(base_agent.BaseAgent):
                 return actions.FunctionCall(_ATTACK_MINIMAP, [[1], [21, 24]])
 
         return actions.FunctionCall(_NO_OP, [])
+
+    def findLocationForBuilding(self, obs):
+        unit_type = obs.observation['screen'][_UNIT_TYPE]
+        max_unit_x = 0
+        max_unit_y = 0
+        min_unit_x = 10000
+        min_unit_y = 10000
+        for building in TERRAN.BUILDINGS:
+            unit_y, unit_x = (unit_type == building).nonzero()
+            if unit_y.any():
+                max_unit_x = max_unit_x if max_unit_x > unit_x.max() else unit_x.max()
+                max_unit_y = max_unit_y if max_unit_y > unit_y.max() else unit_y.max()
+                min_unit_x = min_unit_x if min_unit_x < unit_x.min() else unit_x.min()
+                min_unit_y = min_unit_y if min_unit_y < unit_y.min() else unit_y.min()
+
+        if not self.base_top_left:
+            return self.transformLocation(min_unit_x, TERRAN.BARRACKS_SIZE / 2, min_unit_y, 0)
+
+        return self.transformLocation(max_unit_x, TERRAN.BARRACKS_SIZE / 2, max_unit_y, 0)
