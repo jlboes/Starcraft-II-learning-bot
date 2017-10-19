@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from ScLogger import ScLogger
 
 
 # from https://github.com/MorvanZhou/Reinforcement-learning-with-tensorflow
@@ -16,6 +17,7 @@ class QLearningTable:
 
         if np.random.uniform() < self.epsilon:
             # choose best action
+            ScLogger.logAgent("chose best action")
             state_action = self.q_table.ix[observation, :]
 
             # some actions have the same value
@@ -24,6 +26,7 @@ class QLearningTable:
             action = state_action.argmax()
         else:
             # choose random action
+            ScLogger.logAgent("chose random action")
             action = np.random.choice(self.actions)
 
         return action

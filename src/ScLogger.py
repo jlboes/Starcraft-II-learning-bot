@@ -12,6 +12,10 @@ class ScLogger:
         ScLogger.logger.info("[SC LOGGER] : %s", message)
 
     @staticmethod
+    def logAgent(message):
+        ScLogger.logger.info("[SC LOGGER][AGENT] : %s", message)
+
+    @staticmethod
     def logbo(message):
         ScLogger.logger.info("[SC LOGGER][BUILD ORDER] : %s", message)
 

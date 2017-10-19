@@ -1,4 +1,6 @@
 import random
+import math
+import numpy as np
 
 from pysc2.agents import base_agent
 from pysc2.lib import actions
@@ -6,6 +8,8 @@ from pysc2.lib import features
 
 from QLearningTable import QLearningTable
 from ScLogger import ScLogger
+
+import NEUTRAL
 import TERRAN
 import REWARD
 
@@ -49,18 +53,24 @@ smart_actions = [
 
 
 class SmartAgent(base_agent.BaseAgent):
+    # depot_x = 5
+
     def __init__(self):
         self.qlearn = QLearningTable(actions=list(range(len(smart_actions))))
+        self.previous_score = 0
         self.previous_killed_unit_score = 0
         self.previous_killed_building_score = 0
         self.previous_action = None
         self.previous_state = None
 
-    def transformLocation(self, x, x_distance, y, y_distance):
-        if not self.base_top_left:
-            return [max(x - x_distance, 0), max(y - y_distance, 0)]
+        self.depot_x = 5
+        self.depot_y = 5
 
-        return [min(x + x_distance, MAP_MAXSIZE), min(y + y_distance, MAP_MAXSIZE)]
+    # def transformLocation(self, x, x_distance, y, y_distance):
+    #     if not self.base_top_left:
+    #         return [max(x - x_distance, 0), max(y - y_distance, 0)]
+    #
+    #     return [min(x + x_distance, MAP_MAXSIZE), min(y + y_distance, MAP_MAXSIZE)]
 
     def step(self, obs):
 
@@ -70,8 +80,8 @@ class SmartAgent(base_agent.BaseAgent):
         self.base_top_left = 1 if player_y.any() and player_y.mean() <= 31 else 0
 
         unit_type = obs.observation['screen'][_UNIT_TYPE]
-
         depot_y, depot_x = (unit_type == TERRAN.SUPPLY_DEPOT).nonzero()
+
         supply_depot_count = supply_depot_count = 1 if depot_y.any() else 0
 
         barracks_y, barracks_x = (unit_type == TERRAN.BARRACKS).nonzero()
@@ -81,6 +91,7 @@ class SmartAgent(base_agent.BaseAgent):
         army_supply = obs.observation['player'][5]
 
         killed_unit_score = obs.observation['score_cumulative'][5]
+        score = obs.observation['score_cumulative'][0]
         killed_building_score = obs.observation['score_cumulative'][6]
 
         current_state = [
@@ -102,16 +113,16 @@ class SmartAgent(base_agent.BaseAgent):
             if killed_building_score > self.previous_killed_building_score:
                 reward += REWARD.KILL_BUILDING
 
-            if 0 != reward:
-                ScLogger.log("------------------------")
-                ScLogger.logReward(float(reward))
-                ScLogger.log("------------------------")
+            # if 0 != reward:
 
-            self.qlearn.learn(str(self.previous_state), self.previous_action, reward, str(current_state))
+            tt = math.exp(-np.logaddexp(0, -(score - self.previous_score)))
+
+            self.qlearn.learn(str(self.previous_state), self.previous_action, tt, str(current_state))
 
         rl_action = self.qlearn.choose_action(str(current_state))
         smart_action = smart_actions[rl_action]
 
+        self.previous_score = score
         self.previous_killed_unit_score = killed_unit_score
         self.previous_killed_building_score = killed_building_score
         self.previous_state = current_state
@@ -134,13 +145,13 @@ class SmartAgent(base_agent.BaseAgent):
         elif smart_action == ACTION_BUILD_SUPPLY_DEPOT and supply_depot_count == 0:
             if _BUILD_SUPPLY_DEPOT in obs.observation['available_actions']:
                 ScLogger.logbo(smart_action)
-                target = self.findLocationForBuilding(obs)
+                target = self.findLocationForBuilding(obs,TERRAN.SUPPLY_DEPOT_SIZE)
                 return actions.FunctionCall(_BUILD_SUPPLY_DEPOT, [_SCREEN, target])
 
         elif smart_action == ACTION_BUILD_BARRACKS:
             if _BUILD_BARRACKS in obs.observation['available_actions']:
                 ScLogger.logbo(smart_action)
-                target = self.findLocationForBuilding(obs)
+                target = self.findLocationForBuilding(obs,TERRAN.BARRACKS_SIZE)
                 return actions.FunctionCall(_BUILD_BARRACKS, [_SCREEN, target])
 
         elif smart_action == ACTION_SELECT_BARRACKS:
@@ -169,21 +180,31 @@ class SmartAgent(base_agent.BaseAgent):
 
         return actions.FunctionCall(_NO_OP, [])
 
-    def findLocationForBuilding(self, obs):
-        unit_type = obs.observation['screen'][_UNIT_TYPE]
-        max_unit_x = 0
-        max_unit_y = 0
-        min_unit_x = 10000
-        min_unit_y = 10000
-        for building in TERRAN.BUILDINGS:
-            unit_y, unit_x = (unit_type == building).nonzero()
-            if unit_y.any():
-                max_unit_x = max_unit_x if max_unit_x > unit_x.max() else unit_x.max()
-                max_unit_y = max_unit_y if max_unit_y > unit_y.max() else unit_y.max()
-                min_unit_x = min_unit_x if min_unit_x < unit_x.min() else unit_x.min()
-                min_unit_y = min_unit_y if min_unit_y < unit_y.min() else unit_y.min()
-
-        if not self.base_top_left:
-            return self.transformLocation(min_unit_x, TERRAN.BARRACKS_SIZE / 2, min_unit_y, 0)
-
-        return self.transformLocation(max_unit_x, TERRAN.BARRACKS_SIZE / 2, max_unit_y, 0)
+    def findLocationForBuilding(self, obs, size):
+        unit_type = obs.observation["screen"][_UNIT_TYPE]
+        minefield_y, minefield_x = (unit_type == NEUTRAL.MINERALFIELD).nonzero()
+        max_y, max_x = unit_type.shape
+        distance = 6
+        chance = 10
+        while True:
+            s_target_x = int(self.depot_x + np.random.choice([-1, 0, 1], 1) * distance)
+            s_target_y = int(self.depot_y + np.random.choice([-1, 0, 1], 1) * distance)
+            within_map = (0 < s_target_x < max_x - size) and (0 < s_target_y < max_y - size)
+            buildings = [NEUTRAL.MINERALFIELD] + TERRAN.BUILDINGS
+            ScLogger.log(buildings)
+            area = unit_type[s_target_y:s_target_y + 6][s_target_x:s_target_x + 6]
+            space_available = not any(x in area for x in buildings)
+            within_mineral_field = (min(minefield_y) < s_target_y < max(minefield_y)) and (
+                min(minefield_x) < s_target_x < 11 + max(minefield_x))
+            chance += -1
+            if within_map and space_available and not within_mineral_field:
+                self.depot_x = s_target_x
+                self.depot_y = s_target_y
+                s_target = np.array([s_target_x, s_target_y])
+                ScLogger.log(s_target)
+                break
+            if chance == 0:
+                distance += 1
+                chance = 10
+        ScLogger.log("Go go building")
+        return s_target
